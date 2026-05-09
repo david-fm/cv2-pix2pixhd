@@ -221,3 +221,6 @@ __marimo__/
 uv.lock
 
 MoNuSeg
+
+# Mac
+.DS_Store
