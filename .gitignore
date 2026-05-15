@@ -148,7 +148,6 @@ activemq-data/
 *.sage.py
 
 # Environments
-.env
 .envrc
 .venv
 env/
@@ -220,7 +219,7 @@ __marimo__/
 #UV
 uv.lock
 
-MoNuSeg
+
 
 # Mac
 .DS_Store
