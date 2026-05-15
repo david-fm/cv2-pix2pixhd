@@ -206,7 +206,7 @@ def list_pix2pixhd_versions_hf() -> Dict[str, str]:
 def download_file_from_hf(path_in_repo: str, dst: Path) -> Path:
     """Download a single file from HF repo and copy it to dst path."""
     if not HF_REPO_ID:
-        raise RuntimeError("HF_REPO_ID no está configurado.")
+        raise RuntimeError("HF_REPO_ID is not configured.")
     # hf_hub_download returns cached file path
     cached = hf_hub_download(repo_id=HF_REPO_ID, filename=path_in_repo, repo_type="model", token=HF_TOKEN)
     dst.parent.mkdir(parents=True, exist_ok=True)
@@ -273,13 +273,13 @@ def load_baseline_model() -> nn.Module:
         if HF_REPO_ID:
             hf_path = "baseline/best_repacked.pt"
             try:
-                print(f"Descargando baseline desde HF: {HF_REPO_ID}/{hf_path}")
+                print(f"Downloading baseline from HF: {HF_REPO_ID}/{hf_path}")
                 download_file_from_hf(hf_path, BASELINE_REPACKED_CKPT)
                 ckpt_path = BASELINE_REPACKED_CKPT
             except Exception:
-                raise FileNotFoundError("No se encontro el checkpoint baseline local ni en HF.")
+                raise FileNotFoundError("Baseline checkpoint not found locally or on HF.")
         else:
-            raise FileNotFoundError("No se encontro el checkpoint baseline.")
+            raise FileNotFoundError("Baseline checkpoint not found.")
 
     if ckpt_path.is_dir():
         ckpt_path = repack_baseline_checkpoint_from_dir(ckpt_path, BASELINE_REPACKED_CKPT)
@@ -307,7 +307,7 @@ def load_pix2pixhd_model(version: Optional[str] = None) -> nn.Module:
     local_versions = list_pix2pixhd_versions()
     hf_versions = list_pix2pixhd_versions_hf() if HF_REPO_ID else {}
     if not local_versions and not hf_versions:
-        raise FileNotFoundError("No se encontraron checkpoints Pix2PixHD ni local ni en Hugging Face.")
+        raise FileNotFoundError("No Pix2PixHD checkpoints found locally or on Hugging Face.")
 
     if version is None:
         all_versions = []
@@ -316,7 +316,7 @@ def load_pix2pixhd_model(version: Optional[str] = None) -> nn.Module:
         if len(all_versions) == 1:
             version = all_versions[0]
         else:
-            raise ValueError("Debes especificar la versión Pix2PixHD cuando hay múltiples checkpoints disponibles.")
+            raise ValueError("You must specify the Pix2PixHD version when multiple checkpoints are available.")
 
     choice_key = f"Pix2PixHD:{version}"
     if choice_key in _loaded_pix2pixhd_versions:
@@ -331,13 +331,13 @@ def load_pix2pixhd_model(version: Optional[str] = None) -> nn.Module:
             if version in hf_mapping:
                 remote = hf_mapping[version]
                 try:
-                    print(f"Descargando {remote} desde HF...")
+                    print(f"Downloading {remote} from HF...")
                     download_file_from_hf(remote, expected_g)
                 except Exception as e:
-                    raise FileNotFoundError(f"No se pudo descargar {remote} desde HF: {e}")
+                    raise FileNotFoundError(f"Could not download {remote} from HF: {e}")
         # after attempt, if still missing, raise
     if not expected_g.exists():
-        raise FileNotFoundError(f"Checkpoint G para la versión {version} no encontrado localmente ni en HF.")
+        raise FileNotFoundError(f"Checkpoint G for version {version} not found locally or on HF.")
 
     opt = TrainOptions()
     opt.isTrain = False
@@ -368,7 +368,7 @@ def load_pix2pixhd_model(version: Optional[str] = None) -> nn.Module:
 
 def generate_image(label_image: Optional[Image.Image], model_type: str, pix2pix_version: Optional[str]) -> Tuple[Optional[Image.Image], str]:
     if label_image is None:
-        return None, "Debes subir una imagen label antes de generar."
+        return None, "You must upload a label image before generating."
 
     with torch.no_grad():
         if model_type == "Pix2Pix baseline":
@@ -376,7 +376,7 @@ def generate_image(label_image: Optional[Image.Image], model_type: str, pix2pix_
             label_tensor = preprocess_label_for_baseline(label_image).to(DEVICE)
             fake = model(label_tensor).squeeze(0)
             out = denorm_to_pil(fake)
-            return out, f"Generado con {model_type} en {DEVICE}."
+            return out, f"Generated with {model_type} on {DEVICE}."
 
         if model_type == "Pix2PixHD":
             version = pix2pix_version or None
@@ -385,9 +385,9 @@ def generate_image(label_image: Optional[Image.Image], model_type: str, pix2pix_
             inst = torch.zeros_like(label_tensor, device=DEVICE)
             fake = model.inference(label_tensor, inst, image=None).squeeze(0)
             out = denorm_to_pil(fake)
-            return out, f"Generado con Pix2PixHD:{version} en {DEVICE}."
+            return out, f"Generated with Pix2PixHD:{version} on {DEVICE}."
 
-    return None, "Modelo no reconocido."
+    return None, "Unrecognized model."
 
 
 def build_demo() -> gr.Blocks:
@@ -395,8 +395,8 @@ def build_demo() -> gr.Blocks:
 
     if not models:
         warning = (
-            "No se encontraron checkpoints para inferencia. "
-            "Revisa checkpoints_baseline y checkpoints_pix2pixHD/pix2pixHD_monusg."
+            "No checkpoints found for inference. "
+            "Check checkpoints_baseline and checkpoints_pix2pixHD/pix2pixHD_monusg."
         )
         warnings.warn(warning)
 
@@ -416,33 +416,33 @@ def build_demo() -> gr.Blocks:
     default_version = pix2pix_versions[0] if pix2pix_versions else None
 
     with gr.Blocks(title="MoNuSeg Generator") as demo:
-        gr.Markdown("# Generador de histologia desde label")
+        gr.Markdown("# Histology generator from label")
         gr.Markdown(
-            "Sube una label binaria de nucleos. El generador produce una imagen de histologia sintetica."
+            "Upload a binary nuclei label. The generator produces a synthetic histology image."
         )
 
         with gr.Row():
             model_type = gr.Dropdown(
                 choices=model_types,
                 value=default_model_type,
-                label="Tipo de modelo",
+                label="Model type",
             )
             pix2pix_versions_dropdown = gr.Dropdown(
                         choices=pix2pix_versions,
                         value=default_version,
-                        label="Versión Pix2PixHD",
+                        label="Pix2PixHD version",
                         visible=(default_model_type == "Pix2PixHD" and bool(pix2pix_versions)),
                     )
             status = gr.Textbox(
-                label="Estado",
-                value=f"Dispositivo: {DEVICE}",
+                label="Status",
+                value=f"Device: {DEVICE}",
                 interactive=False,
             )
 
-        label_input = gr.Image(type="pil", label="Label de entrada")
-        output_image = gr.Image(type="pil", label="Imagen generada")
+        label_input = gr.Image(type="pil", label="Input label")
+        output_image = gr.Image(type="pil", label="Generated image")
 
-        generate_btn = gr.Button("Generar")
+        generate_btn = gr.Button("Generate")
         # Update versions dropdown visibility/choices when model type changes
         def _on_model_type_change(selected: str):
             # Use precomputed `pix2pix_versions` to avoid filesystem I/O inside the callback

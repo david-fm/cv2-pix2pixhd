@@ -4,13 +4,12 @@ Each PNG in the dataset folder is a horizontally-concatenated pair: left half =
 real histology image (RGB), right half = binary nuclei mask. The dataset
 returns the two halves as `(label_tensor, real_tensor)` in `[-1, 1]`.
 
-Optional paired data augmentation (horizontal/vertical flip, 90 degrees
-rotations and color jitter on the real image) is applied **synchronously** so
-labels and targets stay aligned.
+Optional paired data augmentation is delegated to
+:func:`util.augmentation.augment_training_pair`, the same routine used in
+``task2_improvements.ipynb``.
 """
 
 from pathlib import Path
-import random
 
 import numpy as np
 import torch
@@ -18,6 +17,8 @@ from PIL import Image
 from torch.utils.data import Dataset, DataLoader, Subset
 from torchvision import transforms
 import torchvision.transforms.functional as TF
+
+from .augmentation import augment_training_pair
 
 
 class MoNuSegDataset(Dataset):
@@ -30,8 +31,9 @@ class MoNuSegDataset(Dataset):
     img_size : int
         Output spatial size (square).
     augment : bool
-        If True, apply paired flips + 90 degrees rotations to (label, real) and
-        a color jitter to the real image only. Use this for the training split.
+        If True, apply the shared paired affine augmentation from
+        :func:`util.augmentation.augment_training_pair` to (label, real).
+        Use this for the training split.
     """
 
     def __init__(self, root: Path, img_size: int = 256, augment: bool = False):
@@ -48,34 +50,9 @@ class MoNuSegDataset(Dataset):
             (img_size, img_size), interpolation=transforms.InterpolationMode.NEAREST
         )
         self.normalize = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-        # Color jitter is applied to the real image only, not the label.
-        self.color_jitter = transforms.ColorJitter(
-            brightness=0.15, contrast=0.15, saturation=0.10, hue=0.02
-        )
 
     def __len__(self):
         return len(self.files)
-
-    def _paired_augment(self, real_pil: Image.Image, label_pil: Image.Image):
-        """Apply the same geometric transforms to both halves, plus a
-        photometric jitter to the real image only."""
-        # Horizontal flip
-        if random.random() < 0.5:
-            real_pil = TF.hflip(real_pil)
-            label_pil = TF.hflip(label_pil)
-        # Vertical flip
-        if random.random() < 0.5:
-            real_pil = TF.vflip(real_pil)
-            label_pil = TF.vflip(label_pil)
-        # Random 90 degrees rotation (square -> stays square)
-        k = random.randint(0, 3)
-        if k:
-            angle = 90 * k
-            real_pil = TF.rotate(real_pil, angle, interpolation=TF.InterpolationMode.BICUBIC)
-            label_pil = TF.rotate(label_pil, angle, interpolation=TF.InterpolationMode.NEAREST)
-        # Color jitter on the real image only
-        real_pil = self.color_jitter(real_pil)
-        return real_pil, label_pil
 
     def __getitem__(self, idx):
         img = Image.open(self.files[idx]).convert("RGB")
@@ -84,15 +61,19 @@ class MoNuSegDataset(Dataset):
         real_pil  = img.crop((0,    0, half, h))   # left  -> histology
         label_pil = img.crop((half, 0, w,    h))   # right -> nuclei mask
 
-        # Resize first so geometric augmentations don't change image size
         real_pil  = self.resize_bicubic(real_pil)
         label_pil = self.resize_nearest(label_pil.convert("RGB"))
 
-        if self.augment:
-            real_pil, label_pil = self._paired_augment(real_pil, label_pil)
-
         real_tensor  = self.normalize(TF.to_tensor(real_pil))
         label_tensor = self.normalize(TF.to_tensor(label_pil))
+
+        if self.augment:
+            # Float labels normalized to [-1, 1] -> background fill is -1.0.
+            label_tensor, real_tensor = augment_training_pair(
+                label_tensor, real_tensor,
+                label_fill=-1.0,
+                real_fill=-1.0,
+            )
         return label_tensor, real_tensor
 
 
