@@ -20,4 +20,5 @@ dependencies = [
     "torchkeras>=4.0.5",
     "torchvision>=0.26.0",
     "visualkeras>=0.2.0",
+    "torchmetrics[image]>=1.9.0",
 ]
