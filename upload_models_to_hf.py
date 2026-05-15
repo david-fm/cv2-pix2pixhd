@@ -53,25 +53,25 @@ def main() -> int:
 
     if not baseline_file.exists():
         raise FileNotFoundError(
-            f"No existe el archivo baseline esperado: {baseline_file}. "
-            "Genera `best_repacked.pt` antes de subirlo."
+            f"Expected baseline file does not exist: {baseline_file}. "
+            "Generate `best_repacked.pt` before uploading."
         )
     if not pix2pix_dir.exists():
-        raise FileNotFoundError(f"No existe la carpeta Pix2PixHD esperada: {pix2pix_dir}")
+        raise FileNotFoundError(f"Expected Pix2PixHD folder does not exist: {pix2pix_dir}")
 
     repo_id = args.repo_id
     token = args.token
     if not token:
         raise RuntimeError(
-            "No se encontró token de Hugging Face. Configura HF_TOKEN o ejecuta `huggingface-cli login`."
+            "No Hugging Face token found. Set HF_TOKEN or run `huggingface-cli login`."
         )
 
-    print(f"Repositorio destino: {repo_id}")
+    print(f"Target repository: {repo_id}")
     print(f"Baseline: {baseline_file}")
     print(f"Pix2PixHD: {pix2pix_dir}")
 
     if args.dry_run:
-        print("Dry run activado. No se subirá ningún archivo.")
+        print("Dry run enabled. No file will be uploaded.")
         return 0
 
     create_repo(repo_id, token=token, private=args.private, exist_ok=True)
@@ -100,9 +100,9 @@ def main() -> int:
         ignore_patterns=[".DS_Store"],
     )
 
-    print("Subida completada.")
+    print("Upload complete.")
     print(
-        "Sugerencia: el repo queda organizado con baseline/ y pix2pixHD/pix2pixHD_monusg/ para que luego la app los detecte fácilmente."
+        "Tip: the repo is organised with baseline/ and pix2pixHD/pix2pixHD_monusg/ so the app can detect them easily later."
     )
     return 0
 
