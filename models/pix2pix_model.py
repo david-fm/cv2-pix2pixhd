@@ -75,9 +75,7 @@ class UNetGenerator(nn.Module):
 
 
 class PatchGANDiscriminator(nn.Module):
-    """70x70 PatchGAN. Input: cat(label, image) along channels."""
-
-    def __init__(self, in_channels=3, ndf=64):
+    def __init__(self, label_channels=3, img_channels=3, ndf=64):
         super().__init__()
 
         def block(in_c, out_c, stride=2, normalize=True):
@@ -89,10 +87,10 @@ class PatchGANDiscriminator(nn.Module):
             return layers
 
         self.model = nn.Sequential(
-            *block(in_channels * 2, ndf,         normalize=False),
-            *block(ndf,             ndf * 2),
-            *block(ndf * 2,         ndf * 4),
-            *block(ndf * 4,         ndf * 8, stride=1),
+            *block(label_channels + img_channels, ndf, normalize=False),
+            *block(ndf,     ndf * 2),
+            *block(ndf * 2, ndf * 4),
+            *block(ndf * 4, ndf * 8, stride=1),
             nn.Conv2d(ndf * 8, 1, kernel_size=4, stride=1, padding=1),
         )
 
@@ -111,9 +109,8 @@ def init_weights(m):
 
 
 def build_baseline_pix2pix(in_channels=3, out_channels=3, ngf=64, ndf=64, device=None):
-    """Instantiate G + D, apply init, and (optionally) move to a device."""
     G = UNetGenerator(in_channels=in_channels, out_channels=out_channels, ngf=ngf)
-    D = PatchGANDiscriminator(in_channels=in_channels, ndf=ndf)
+    D = PatchGANDiscriminator(label_channels=in_channels, img_channels=out_channels, ndf=ndf)
     G.apply(init_weights)
     D.apply(init_weights)
     if device is not None:

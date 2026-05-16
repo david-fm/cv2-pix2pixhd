@@ -18,9 +18,6 @@ from torch.utils.data import Dataset, DataLoader, Subset
 from torchvision import transforms
 import torchvision.transforms.functional as TF
 
-from .augmentation import augment_training_pair
-
-
 class MoNuSegDataset(Dataset):
     """Paired dataset for MoNuSeg.
 

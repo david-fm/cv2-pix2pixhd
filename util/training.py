@@ -23,7 +23,7 @@ def validate_l1(generator: nn.Module, loader: DataLoader, device) -> float:
     generator.eval()
     total, n = 0.0, 0
     for label, real in loader:
-        label, real = label.to(device), real.to(device)
+        label, real = label.to(device).float(), real.to(device)
         fake = generator(label)
         total += torch.mean(torch.abs(denorm(fake) - denorm(real))).item() * label.size(0)
         n     += label.size(0)
@@ -38,8 +38,9 @@ def save_sample_grid(generator: nn.Module, dataset, path: Path, device, n: int =
     rows = []
     for i in range(n):
         label, real = dataset[i]
-        fake = generator(label.unsqueeze(0).to(device)).squeeze(0).cpu()
-        rows.extend([denorm(label), denorm(fake), denorm(real)])
+        fake = generator(label.unsqueeze(0).to(device).float()).squeeze(0).cpu()
+        label_display = denorm(label.float()).expand(3, -1, -1)
+        rows.extend([label_display, denorm(fake), denorm(real)])
     grid = make_grid(torch.stack(rows), nrow=3, padding=2)
     plt.figure(figsize=(6, 2 * n))
     plt.imshow(grid.permute(1, 2, 0).numpy())
@@ -64,7 +65,9 @@ def train_pix2pix(G: nn.Module,
                   save_dir: Path,
                   samples_dir: Path,
                   sample_every: int = 10,
-                  log_every: int = 1):
+                  log_every: int = 1,
+                  early_stopping_patience: int = 30,
+                  early_stopping_min_delta: float = 1e-4):
     """Standard Pix2Pix training loop (BCE adversarial + L1 reconstruction).
 
     Returns the training history dict and best validation L1. Saves the best
@@ -82,6 +85,7 @@ def train_pix2pix(G: nn.Module,
     history = {"g_loss": [], "d_loss": [], "g_gan": [], "g_l1": [], "val_l1": []}
     best_val = float("inf")
     best_epoch = 0
+    es_counter = 0
     start = time.time()
 
     for epoch in range(1, epochs + 1):
@@ -89,8 +93,8 @@ def train_pix2pix(G: nn.Module,
         epoch_g, epoch_d, epoch_gan, epoch_l1 = 0.0, 0.0, 0.0, 0.0
 
         for label, real in train_loader:
-            label = label.to(device, non_blocking=True)
-            real  = real.to(device,  non_blocking=True)
+            label = label.to(device, non_blocking=True).float()
+            real  = real.to(device,  non_blocking=True) 
 
             # Train D
             opt_D.zero_grad(set_to_none=True)
@@ -128,11 +132,19 @@ def train_pix2pix(G: nn.Module,
         val_l1 = validate_l1(G, val_loader, device)
         history["val_l1"].append(val_l1)
 
-        if val_l1 < best_val:
+        if val_l1 < best_val - early_stopping_min_delta:
             best_val, best_epoch = val_l1, epoch
+            es_counter = 0
             torch.save({"G": G.state_dict(), "D": D.state_dict(),
                         "epoch": epoch, "val_l1": val_l1},
                        save_dir / "best.pt")
+        else:
+            es_counter += 1
+            if es_counter >= early_stopping_patience:
+                print(f"Early stopping at epoch {epoch} "
+                      f"(no improvement for {early_stopping_patience} epochs). "
+                      f"Best val L1 = {best_val:.4f} at epoch {best_epoch}.")
+                break
 
         if epoch % log_every == 0 or epoch == epochs:
             elapsed = time.time() - start

@@ -43,7 +43,7 @@ def evaluate_test_set(generator: nn.Module, test_loader: DataLoader, device) -> 
     generator.eval()
     l1_total, n = 0.0, 0
     for label, real in test_loader:
-        label = label.to(device); real = real.to(device)
+        label = label.to(device).float(); real = real.to(device)
         fake = generator(label)
 
         fake01 = denorm(fake)
@@ -71,13 +71,13 @@ def show_qualitative(generator: nn.Module, test_set, device, n_show: int = 6, sa
     fig, axes = plt.subplots(n_show, 3, figsize=(9, 3 * n_show))
     for i in range(n_show):
         label, real = test_set[i]
-        fake = generator(label.unsqueeze(0).to(device)).squeeze(0).cpu()
+        fake = generator(label.unsqueeze(0).to(device).float()).squeeze(0).cpu()
         for j, (img, title) in enumerate([
             (denorm(label), "label"),
             (denorm(fake),  "generated"),
             (denorm(real),  "real"),
         ]):
-            axes[i, j].imshow(img.permute(1, 2, 0).numpy())
+            axes[i, j].imshow(img.float().permute(1, 2, 0).numpy())
             axes[i, j].axis("off")
             if i == 0:
                 axes[i, j].set_title(title)
