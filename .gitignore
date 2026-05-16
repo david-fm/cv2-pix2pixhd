@@ -222,4 +222,5 @@ uv.lock
 
 
 # Mac
-.DS_Store
+.DS_Storecheckpoints_baseline/
+checkpoints_baseline_aug/
