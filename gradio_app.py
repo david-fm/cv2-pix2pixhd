@@ -272,9 +272,7 @@ def preprocess_label_for_baseline(image: Image.Image) -> torch.Tensor:
     gray = image.convert("L").resize((IMG_SIZE, IMG_SIZE), Image.Resampling.NEAREST)
     arr = np.array(gray, dtype=np.float32)
     arr = (arr > 127).astype(np.float32)
-    arr = np.stack([arr, arr, arr], axis=0)
-    tensor = torch.from_numpy(arr).unsqueeze(0)
-    return tensor * 2.0 - 1.0
+    return torch.from_numpy(arr).unsqueeze(0).unsqueeze(0)
 
 
 def preprocess_label_for_pix2pixhd(image: Image.Image) -> torch.Tensor:
@@ -305,7 +303,7 @@ def _load_baseline_generator(
     if ckpt_path.is_dir():
         ckpt_path = repack_baseline_checkpoint_from_dir(ckpt_path, repacked_ckpt)
 
-    model = UNetGenerator(ngf=64).to(DEVICE)
+    model = UNetGenerator(in_channels=1, ngf=64).to(DEVICE)
     ckpt = torch.load(ckpt_path, map_location=DEVICE)
 
     if isinstance(ckpt, dict) and "G" in ckpt:
