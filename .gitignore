@@ -225,3 +225,4 @@ uv.lock
 .DS_Storecheckpoints_baseline/
 checkpoints_baseline_aug/
 checkpoints*/
+checkpoints_pix2pixHD/
