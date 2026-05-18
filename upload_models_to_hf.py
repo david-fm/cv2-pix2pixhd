@@ -49,6 +49,8 @@ def main() -> int:
 
     baseline_file = PROJECT_ROOT / "checkpoints_baseline" / "best_repacked.pt"
     baseline_metrics = PROJECT_ROOT / "checkpoints_baseline" / "test_metrics.json"
+    baseline_aug_file = PROJECT_ROOT / "checkpoints_baseline_aug" / "best_repacked.pt"
+    baseline_aug_metrics = PROJECT_ROOT / "checkpoints_baseline_aug" / "test_metrics.json"
     pix2pix_dir = PROJECT_ROOT / "checkpoints_pix2pixHD" / "pix2pixHD_monusg"
 
     if not baseline_file.exists():
@@ -68,6 +70,10 @@ def main() -> int:
 
     print(f"Target repository: {repo_id}")
     print(f"Baseline: {baseline_file}")
+    if baseline_aug_file.exists():
+        print(f"Baseline + aug: {baseline_aug_file}")
+    else:
+        print(f"Baseline + aug: not found at {baseline_aug_file} (skipping)")
     print(f"Pix2PixHD: {pix2pix_dir}")
 
     if args.dry_run:
@@ -92,6 +98,21 @@ def main() -> int:
             repo_type="model",
         )
 
+    if baseline_aug_file.exists():
+        api.upload_file(
+            path_or_fileobj=str(baseline_aug_file),
+            path_in_repo="baseline_aug/best_repacked.pt",
+            repo_id=repo_id,
+            repo_type="model",
+        )
+        if baseline_aug_metrics.exists():
+            api.upload_file(
+                path_or_fileobj=str(baseline_aug_metrics),
+                path_in_repo="baseline_aug/test_metrics.json",
+                repo_id=repo_id,
+                repo_type="model",
+            )
+
     api.upload_folder(
         folder_path=str(pix2pix_dir),
         repo_id=repo_id,
@@ -102,7 +123,7 @@ def main() -> int:
 
     print("Upload complete.")
     print(
-        "Tip: the repo is organised with baseline/ and pix2pixHD/pix2pixHD_monusg/ so the app can detect them easily later."
+        "Tip: the repo is organised with baseline/, baseline_aug/ and pix2pixHD/pix2pixHD_monusg/ so the app can detect them easily later."
     )
     return 0
 

@@ -33,6 +33,13 @@ BASELINE_CKPT_CANDIDATES = [
 BASELINE_CKPT_DIR = PROJECT_ROOT / "checkpoints_baseline" / "best"
 BASELINE_REPACKED_CKPT = PROJECT_ROOT / "checkpoints_baseline" / "best_repacked.pt"
 
+BASELINE_AUG_CKPT_CANDIDATES = [
+    PROJECT_ROOT / "checkpoints_baseline_aug" / "best.pt",
+    PROJECT_ROOT / "checkpoints_baseline_aug" / "best.pt.zip",
+]
+BASELINE_AUG_CKPT_DIR = PROJECT_ROOT / "checkpoints_baseline_aug" / "best"
+BASELINE_AUG_REPACKED_CKPT = PROJECT_ROOT / "checkpoints_baseline_aug" / "best_repacked.pt"
+
 PIX2PIXHD_DIR = PROJECT_ROOT / "checkpoints_pix2pixHD" / "pix2pixHD_monusg"
 
 
@@ -132,6 +139,7 @@ def resolve_device() -> torch.device:
 DEVICE = resolve_device()
 
 _loaded_baseline: Optional[nn.Module] = None
+_loaded_baseline_aug: Optional[nn.Module] = None
 _loaded_pix2pixhd: Optional[nn.Module] = None
 _loaded_pix2pixhd_versions: Dict[str, nn.Module] = {}
 
@@ -142,6 +150,15 @@ def find_baseline_checkpoint() -> Optional[Path]:
             return ckpt
     if BASELINE_CKPT_DIR.exists() and BASELINE_CKPT_DIR.is_dir():
         return BASELINE_CKPT_DIR
+    return None
+
+
+def find_baseline_aug_checkpoint() -> Optional[Path]:
+    for ckpt in BASELINE_AUG_CKPT_CANDIDATES:
+        if ckpt.exists():
+            return ckpt
+    if BASELINE_AUG_CKPT_DIR.exists() and BASELINE_AUG_CKPT_DIR.is_dir():
+        return BASELINE_AUG_CKPT_DIR
     return None
 
 
@@ -219,6 +236,9 @@ def available_models() -> Dict[str, str]:
     baseline_ckpt = find_baseline_checkpoint()
     if baseline_ckpt is not None:
         models["Pix2Pix baseline"] = str(baseline_ckpt)
+    baseline_aug_ckpt = find_baseline_aug_checkpoint()
+    if baseline_aug_ckpt is not None:
+        models["Pix2Pix baseline + aug"] = str(baseline_aug_ckpt)
     # Add each Pix2PixHD version as a separate selectable model
     for k, v in list_pix2pixhd_versions().items():
         models[k] = str(v)
@@ -228,12 +248,14 @@ def available_models() -> Dict[str, str]:
         for ver, remote in hf_pix.items():
             key = f"Pix2PixHD:{ver} (HF)"
             models[key] = f"hf://{HF_REPO_ID}/{remote}"
-        # baseline in HF
+        # baseline(s) in HF
         api = HfApi(token=HF_TOKEN)
         try:
             files = api.list_repo_files(HF_REPO_ID)
             if "baseline/best_repacked.pt" in files:
                 models["Pix2Pix baseline (HF)"] = f"hf://{HF_REPO_ID}/baseline/best_repacked.pt"
+            if "baseline_aug/best_repacked.pt" in files:
+                models["Pix2Pix baseline + aug (HF)"] = f"hf://{HF_REPO_ID}/baseline_aug/best_repacked.pt"
         except Exception:
             pass
     return models
@@ -262,27 +284,26 @@ def preprocess_label_for_pix2pixhd(image: Image.Image) -> torch.Tensor:
     return torch.from_numpy(arr).unsqueeze(0).unsqueeze(0)
 
 
-def load_baseline_model() -> nn.Module:
-    global _loaded_baseline
-    if _loaded_baseline is not None:
-        return _loaded_baseline
-
-    ckpt_path = find_baseline_checkpoint()
+def _load_baseline_generator(
+    find_local_fn,
+    repacked_ckpt: Path,
+    hf_remote_path: str,
+    label: str,
+) -> nn.Module:
+    ckpt_path = find_local_fn()
     if ckpt_path is None:
-        # Try to download from HF if configured
         if HF_REPO_ID:
-            hf_path = "baseline/best_repacked.pt"
             try:
-                print(f"Downloading baseline from HF: {HF_REPO_ID}/{hf_path}")
-                download_file_from_hf(hf_path, BASELINE_REPACKED_CKPT)
-                ckpt_path = BASELINE_REPACKED_CKPT
+                print(f"Downloading {label} from HF: {HF_REPO_ID}/{hf_remote_path}")
+                download_file_from_hf(hf_remote_path, repacked_ckpt)
+                ckpt_path = repacked_ckpt
             except Exception:
-                raise FileNotFoundError("Baseline checkpoint not found locally or on HF.")
+                raise FileNotFoundError(f"{label} checkpoint not found locally or on HF.")
         else:
-            raise FileNotFoundError("Baseline checkpoint not found.")
+            raise FileNotFoundError(f"{label} checkpoint not found.")
 
     if ckpt_path.is_dir():
-        ckpt_path = repack_baseline_checkpoint_from_dir(ckpt_path, BASELINE_REPACKED_CKPT)
+        ckpt_path = repack_baseline_checkpoint_from_dir(ckpt_path, repacked_ckpt)
 
     model = UNetGenerator(ngf=64).to(DEVICE)
     ckpt = torch.load(ckpt_path, map_location=DEVICE)
@@ -293,8 +314,31 @@ def load_baseline_model() -> nn.Module:
         model.load_state_dict(ckpt)
 
     model.eval()
-    _loaded_baseline = model
     return model
+
+
+def load_baseline_model() -> nn.Module:
+    global _loaded_baseline
+    if _loaded_baseline is None:
+        _loaded_baseline = _load_baseline_generator(
+            find_baseline_checkpoint,
+            BASELINE_REPACKED_CKPT,
+            "baseline/best_repacked.pt",
+            "baseline",
+        )
+    return _loaded_baseline
+
+
+def load_baseline_aug_model() -> nn.Module:
+    global _loaded_baseline_aug
+    if _loaded_baseline_aug is None:
+        _loaded_baseline_aug = _load_baseline_generator(
+            find_baseline_aug_checkpoint,
+            BASELINE_AUG_REPACKED_CKPT,
+            "baseline_aug/best_repacked.pt",
+            "baseline + aug",
+        )
+    return _loaded_baseline_aug
 
 
 def load_pix2pixhd_model(version: Optional[str] = None) -> nn.Module:
@@ -378,6 +422,13 @@ def generate_image(label_image: Optional[Image.Image], model_type: str, pix2pix_
             out = denorm_to_pil(fake)
             return out, f"Generated with {model_type} on {DEVICE}."
 
+        if model_type == "Pix2Pix baseline + aug":
+            model = load_baseline_aug_model()
+            label_tensor = preprocess_label_for_baseline(label_image).to(DEVICE)
+            fake = model(label_tensor).squeeze(0)
+            out = denorm_to_pil(fake)
+            return out, f"Generated with {model_type} on {DEVICE}."
+
         if model_type == "Pix2PixHD":
             version = pix2pix_version or None
             model = load_pix2pixhd_model(version)
@@ -401,7 +452,8 @@ def build_demo() -> gr.Blocks:
         warnings.warn(warning)
 
     # Determine default model type and available pix2pixhd versions
-    has_baseline = any(k == "Pix2Pix baseline" for k in models.keys())
+    has_baseline = any(k.startswith("Pix2Pix baseline") and "+ aug" not in k for k in models.keys())
+    has_baseline_aug = any(k.startswith("Pix2Pix baseline + aug") for k in models.keys())
     local_versions = [k.split(":", 1)[1] for k in list_pix2pixhd_versions().keys()]
     hf_versions = list(list_pix2pixhd_versions_hf().keys()) if HF_REPO_ID else []
     # Merge local first, then HF-only versions, preserving order and uniqueness
@@ -411,8 +463,15 @@ def build_demo() -> gr.Blocks:
         if v not in seen:
             seen.add(v)
             pix2pix_versions.append(v)
-    model_types = ["Pix2Pix baseline", "Pix2PixHD"]
-    default_model_type = "Pix2Pix baseline" if has_baseline else ("Pix2PixHD" if pix2pix_versions else "Pix2Pix baseline")
+    model_types = ["Pix2Pix baseline", "Pix2Pix baseline + aug", "Pix2PixHD"]
+    if has_baseline:
+        default_model_type = "Pix2Pix baseline"
+    elif has_baseline_aug:
+        default_model_type = "Pix2Pix baseline + aug"
+    elif pix2pix_versions:
+        default_model_type = "Pix2PixHD"
+    else:
+        default_model_type = "Pix2Pix baseline"
     default_version = pix2pix_versions[0] if pix2pix_versions else None
 
     with gr.Blocks(title="MoNuSeg Generator") as demo:
