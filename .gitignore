@@ -226,3 +226,8 @@ uv.lock
 checkpoints_baseline_aug/
 checkpoints*/
 checkpoints_pix2pixHD/
+
+# Variables de entorno (contienen tokens)
+.env
+.env.*
+!.env.example
